@@ -80,7 +80,7 @@
     let geminiAPI;  // Will be initialized after loading system instructions
 
     const setupConfig = {
-      model: `projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/gemini-2.0-flash-exp`,
+      model: `projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/gemini-2.0-flash-live-preview-04-09`,
       tools: [{
         functionDeclarations: [{
           name: "get_weather",
@@ -130,9 +130,10 @@
         speech_config: {
           voice_config: {
             prebuilt_voice_config: {
-              voice_name: "Aoede"
+              voice_name: "Despina"
             }
-          }
+          },
+          language_code: "tr-TR"
         }
       }
     };
@@ -226,7 +227,8 @@
                 prebuilt_voice_config: {
                   voice_name: "Puck"
                 }
-              }
+              },
+              language_code: "tr-TR"
             }
           }
         }
