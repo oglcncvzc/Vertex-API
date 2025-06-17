@@ -106,7 +106,7 @@ class GeminiLiveAPI {
         speech_config: {
           voice_config: {
             prebuilt_voice_config: {
-              voice_name: "Aoede"
+              voice_name: "Puck"
             }
           }
         }
