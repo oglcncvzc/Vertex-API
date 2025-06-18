@@ -19,9 +19,11 @@ import traceback
 import websockets
 import certifi
 import google.auth
+import os
 from google.auth.transport.requests import Request
 from websockets.legacy.protocol import WebSocketCommonProtocol
 from websockets.legacy.server import WebSocketServerProtocol
+from google.oauth2 import service_account
 
 
 print("DEBUG: proxy.py - Starting script...")  # Add print here
@@ -39,11 +41,14 @@ active_connections = set()
 async def get_access_token():
     """Retrieves the access token for the currently authenticated account."""
     try:
-        creds, _ = google.auth.default()  # Get the default credentials
-        if not creds.valid:
-            # Refresh the credentials if they're not valid
-            request = Request()
-            creds.refresh(request)
+        # Cloud Run'da service account dosyası container içinde olacak
+        SERVICE_ACCOUNT_FILE = "voice-asistant-459013-29c675d43902.json"
+        creds = service_account.Credentials.from_service_account_file(
+            SERVICE_ACCOUNT_FILE,
+            scopes=["https://www.googleapis.com/auth/cloud-platform"]
+        )
+        creds.refresh(Request())
+        print("Kullanılan service account:", creds.service_account_email)
         return creds.token
     except Exception as e:
         print(f"Error getting access token: {e}")
@@ -233,9 +238,8 @@ async def main() -> None:
     Starts the WebSocket server.
     """
     print(f"DEBUG: proxy.py - main() function started")
-    # Get the port from the environment variable, defaulting to 8081
-    # port = int(os.environ.get("PORT", 8081))
-    port = 8081
+    # Cloud Run'da PORT environment variable'ını kullan
+    port = int(os.environ.get("PORT", 8080))
 
     # Start the cleanup task
     cleanup_task = asyncio.create_task(cleanup_connections())
@@ -243,8 +247,6 @@ async def main() -> None:
     async with websockets.serve(
         handle_client,
         "0.0.0.0",
-        # "localhost",
-        # 8080,
         port,
         ping_interval=30,  # Send ping every 30 seconds
         ping_timeout=10,  # Wait 10 seconds for pong
