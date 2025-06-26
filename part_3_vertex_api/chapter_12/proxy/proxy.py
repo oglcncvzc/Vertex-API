@@ -20,6 +20,8 @@ import websockets
 import certifi
 import google.auth
 import os
+import aiohttp
+from aiohttp import web
 from google.auth.transport.requests import Request
 from websockets.legacy.protocol import WebSocketCommonProtocol
 from websockets.legacy.server import WebSocketServerProtocol
@@ -36,6 +38,9 @@ DEBUG = True
 
 # Track active connections
 active_connections = set()
+
+# Weather API configuration
+OPENWEATHER_API_KEY = '07e2ffbd63bb3cfbd8b0f27a4dd93104'
 
 
 async def get_access_token():
@@ -138,7 +143,7 @@ async def proxy_task(
 
 
 async def create_proxy(
-    client_websocket: WebSocketCommonProtocol, bearer_token: str
+    client_websocket, bearer_token: str
 ) -> None:
     """
     Establishes a WebSocket connection to the server and creates two tasks for
@@ -161,10 +166,10 @@ async def create_proxy(
 
             # Create bidirectional proxy tasks
             client_to_server = asyncio.create_task(
-                proxy_task(client_websocket, server_websocket, "Client->Server")
+                proxy_task_aiohttp(client_websocket, server_websocket, "Client->Server")
             )
             server_to_client = asyncio.create_task(
-                proxy_task(server_websocket, client_websocket, "Server->Client")
+                proxy_task_websockets(server_websocket, client_websocket, "Server->Client")
             )
 
             try:
@@ -188,30 +193,194 @@ async def create_proxy(
         print(f"Full traceback: {traceback.format_exc()}")
 
 
-async def handle_client(client_websocket: WebSocketServerProtocol) -> None:
+async def proxy_task_aiohttp(
+    source_websocket,
+    target_websocket: WebSocketCommonProtocol,
+    name: str = "",
+) -> None:
+    """
+    Forwards messages from aiohttp WebSocket to websockets WebSocket.
+    """
+    try:
+        async for message in source_websocket:
+            try:
+                if message.type == web.WSMsgType.TEXT:
+                    data = json.loads(message.data)
+                elif message.type == web.WSMsgType.BINARY:
+                    data = json.loads(message.data.decode())
+                else:
+                    continue
+
+                # Log message type for debugging
+                if "setup" in data:
+                    print(f"{name} forwarding setup message")
+                    print(f"Setup message content: {json.dumps(data, indent=2)}")
+                elif "realtime_input" in data:
+                    print(f"{name} forwarding audio/video input")
+                elif "serverContent" in data:
+                    has_audio = "inlineData" in str(data)
+                    print(
+                        f"{name} forwarding server content"
+                        + (" with audio" if has_audio else "")
+                    )
+                else:
+                    print(f"{name} forwarding message type: {list(data.keys())}")
+                    print(f"Message content: {json.dumps(data, indent=2)}")
+
+                # Forward the message
+                try:
+                    await target_websocket.send(json.dumps(data))
+                except Exception as e:
+                    print(f"\n{name} Error sending message:")
+                    print("=" * 80)
+                    print(f"Error details: {str(e)}")
+                    print("=" * 80)
+                    print(f"Message that failed: {json.dumps(data, indent=2)}")
+                    raise
+
+            except websockets.exceptions.ConnectionClosed as e:
+                print(f"\n{name} connection closed during message processing:")
+                print("=" * 80)
+                print(f"Close code: {e.code}")
+                print(f"Close reason (full):")
+                print("-" * 40)
+                print(e.reason)
+                print("=" * 80)
+                break
+            except Exception as e:
+                print(f"\n{name} Error processing message:")
+                print("=" * 80)
+                print(f"Error details: {str(e)}")
+                print(f"Full traceback:\n{traceback.format_exc()}")
+                print("=" * 80)
+
+    except Exception as e:
+        print(f"\n{name} Error:")
+        print("=" * 80)
+        print(f"Error details: {str(e)}")
+        print(f"Full traceback:\n{traceback.format_exc()}")
+        print("=" * 80)
+    finally:
+        # Clean up connections when done
+        print(f"{name} cleaning up connection")
+        if target_websocket in active_connections:
+            active_connections.remove(target_websocket)
+        try:
+            await target_websocket.close()
+        except:
+            pass
+
+
+async def proxy_task_websockets(
+    source_websocket: WebSocketCommonProtocol,
+    target_websocket,
+    name: str = "",
+) -> None:
+    """
+    Forwards messages from websockets WebSocket to aiohttp WebSocket.
+    """
+    try:
+        async for message in source_websocket:
+            try:
+                data = json.loads(message)
+
+                # Log message type for debugging
+                if "setup" in data:
+                    print(f"{name} forwarding setup message")
+                    print(f"Setup message content: {json.dumps(data, indent=2)}")
+                elif "realtime_input" in data:
+                    print(f"{name} forwarding audio/video input")
+                elif "serverContent" in data:
+                    has_audio = "inlineData" in str(data)
+                    print(
+                        f"{name} forwarding server content"
+                        + (" with audio" if has_audio else "")
+                    )
+                else:
+                    print(f"{name} forwarding message type: {list(data.keys())}")
+                    print(f"Message content: {json.dumps(data, indent=2)}")
+
+                # Forward the message
+                try:
+                    await target_websocket.send_str(json.dumps(data))
+                except Exception as e:
+                    print(f"\n{name} Error sending message:")
+                    print("=" * 80)
+                    print(f"Error details: {str(e)}")
+                    print("=" * 80)
+                    print(f"Message that failed: {json.dumps(data, indent=2)}")
+                    raise
+
+            except websockets.exceptions.ConnectionClosed as e:
+                print(f"\n{name} connection closed during message processing:")
+                print("=" * 80)
+                print(f"Close code: {e.code}")
+                print(f"Close reason (full):")
+                print("-" * 40)
+                print(e.reason)
+                print("=" * 80)
+                break
+            except Exception as e:
+                print(f"\n{name} Error processing message:")
+                print("=" * 80)
+                print(f"Error details: {str(e)}")
+                print(f"Full traceback:\n{traceback.format_exc()}")
+                print("=" * 80)
+
+    except websockets.exceptions.ConnectionClosed as e:
+        print(f"\n{name} connection closed:")
+        print("=" * 80)
+        print(f"Close code: {e.code}")
+        print(f"Close reason (full):")
+        print("-" * 40)
+        print(e.reason)
+        print("=" * 80)
+    except Exception as e:
+        print(f"\n{name} Error:")
+        print("=" * 80)
+        print(f"Error details: {str(e)}")
+        print(f"Full traceback:\n{traceback.format_exc()}")
+        print("=" * 80)
+    finally:
+        # Clean up connections when done
+        print(f"{name} cleaning up connection")
+        if source_websocket in active_connections:
+            active_connections.remove(source_websocket)
+        try:
+            await source_websocket.close()
+        except:
+            pass
+
+
+async def handle_client(request):
     """
     Handles a new client connection.
     """
-    print("New connection...")
+    print("New WebSocket connection...")
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
+    
     try:
         # Get auth token automatically
         bearer_token = await get_access_token()
         print("Retrieved bearer token automatically")
 
         # Send auth complete message to client
-        await client_websocket.send(json.dumps({"authComplete": True}))
+        await ws.send_json({"authComplete": True})
         print("Sent auth complete message")
 
         print("Creating proxy connection")
-        await create_proxy(client_websocket, bearer_token)
+        await create_proxy(ws, bearer_token)
 
     except asyncio.TimeoutError:
         print("Timeout in handle_client")
-        await client_websocket.close(code=1008, reason="Auth timeout")
+        await ws.close(code=1008, message=b"Auth timeout")
     except Exception as e:
         print(f"Error in handle_client: {e}")
         print(f"Full traceback: {traceback.format_exc()}")
-        await client_websocket.close(code=1011, reason=str(e))
+        await ws.close(code=1011, message=str(e).encode())
+    
+    return ws
 
 
 async def cleanup_connections() -> None:
@@ -233,9 +402,82 @@ async def cleanup_connections() -> None:
         await asyncio.sleep(30)  # Check every 30 seconds
 
 
+async def get_weather_data(city):
+    """Hava durumu verilerini OpenWeatherMap API'sinden alır"""
+    try:
+        # Önce şehir için koordinatları al
+        geo_url = f"https://api.openweathermap.org/geo/1.0/direct?q={city}&limit=1&appid={OPENWEATHER_API_KEY}"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(geo_url) as response:
+                if response.status != 200:
+                    return {"error": f"Geo API failed with status: {response.status}"}
+                geo_data = await response.json()
+
+        if not geo_data:
+            return {"error": f"Could not find location: {city}"}
+
+        lat, lon = geo_data[0]['lat'], geo_data[0]['lon']
+
+        # Sonra hava durumu verilerini al
+        weather_url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&units=metric&appid={OPENWEATHER_API_KEY}"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(weather_url) as response:
+                if response.status != 200:
+                    return {"error": f"Weather API failed with status: {response.status}"}
+                weather_data = await response.json()
+
+        return {
+            "temperature": weather_data['main']['temp'],
+            "description": weather_data['weather'][0]['description'],
+            "humidity": weather_data['main']['humidity'],
+            "windSpeed": weather_data['wind']['speed'],
+            "city": weather_data['name'],
+            "country": weather_data['sys']['country']
+        }
+    except Exception as e:
+        return {"error": f"Error fetching weather for {city}: {str(e)}"}
+
+
+async def weather_handler(request):
+    """Hava durumu endpoint handler'ı"""
+    try:
+        # CORS headers
+        response = web.Response()
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        
+        if request.method == 'OPTIONS':
+            response.status = 200
+            return response
+
+        # Şehir parametresini al
+        city = request.query.get('city')
+        if not city:
+            response.status = 400
+            response.text = json.dumps({"error": "City parameter is required"})
+            response.content_type = 'application/json'
+            return response
+
+        # Hava durumu verilerini al
+        weather_data = await get_weather_data(city)
+        
+        response.text = json.dumps(weather_data)
+        response.content_type = 'application/json'
+        return response
+        
+    except Exception as e:
+        response = web.Response()
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.status = 500
+        response.text = json.dumps({"error": f"Internal server error: {str(e)}"})
+        response.content_type = 'application/json'
+        return response
+
+
 async def main() -> None:
     """
-    Starts the WebSocket server.
+    Starts the WebSocket server and HTTP server.
     """
     print(f"DEBUG: proxy.py - main() function started")
     # Cloud Run'da PORT environment variable'ını kullan
@@ -244,25 +486,35 @@ async def main() -> None:
     # Start the cleanup task
     cleanup_task = asyncio.create_task(cleanup_connections())
 
-    async with websockets.serve(
-        handle_client,
-        "0.0.0.0",
-        port,
-        ping_interval=30,  # Send ping every 30 seconds
-        ping_timeout=10,  # Wait 10 seconds for pong
-    ):
-        print(f"Running websocket server on 0.0.0.0:{port}...")
-        try:
-            await asyncio.Future()  # run forever
-        finally:
-            cleanup_task.cancel()
-            # Close all remaining connections
-            for conn in list(active_connections):
-                try:
-                    await conn.close()
-                except:
-                    pass
-            active_connections.clear()
+    # HTTP ve WebSocket sunucusu için app oluştur
+    app = web.Application()
+    app.router.add_get('/weather', weather_handler)
+    app.router.add_post('/weather', weather_handler)
+    app.router.add_options('/weather', weather_handler)
+    
+    # WebSocket handler'ı ekle
+    app.router.add_get('/ws', handle_client)
+
+    # Sunucuyu başlat
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    print(f"HTTP and WebSocket server running on 0.0.0.0:{port}...")
+
+    try:
+        await asyncio.Future()  # run forever
+    finally:
+        cleanup_task.cancel()
+        # Close all remaining connections
+        for conn in list(active_connections):
+            try:
+                await conn.close()
+            except:
+                pass
+        active_connections.clear()
+        # Stop HTTP server
+        await runner.cleanup()
 
 
 if __name__ == "__main__":

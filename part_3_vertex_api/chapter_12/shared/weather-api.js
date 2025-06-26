@@ -18,39 +18,39 @@ const OPENWEATHER_API_KEY = '07e2ffbd63bb3cfbd8b0f27a4dd93104';
 
 export async function getWeather(city) {
   try {
-    // First get coordinates for the city
-    const geoUrl = `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(city)}&limit=1&appid=${OPENWEATHER_API_KEY}`;
-    console.log('Fetching geo data from:', geoUrl);
-    const geoResponse = await fetch(geoUrl);
-    if (!geoResponse.ok) {
-      throw new Error(`Geo API failed with status: ${geoResponse.status}`);
+    // Proxy sunucusundaki weather endpoint'ini kullan
+    // Cloud Run'da çalışırken proxy sunucusunun URL'sini kullan
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    
+    let proxyUrl;
+    if (isLocalhost) {
+      // Local development için
+      proxyUrl = `http://localhost:8080/weather?city=${encodeURIComponent(city)}`;
+    } else {
+      // DİKKAT: Burada PROXY SERVİSİNİN tam URL'si olmalı!
+      proxyUrl = `https://vertex-proxy-service-638345404110.us-central1.run.app/weather?city=${encodeURIComponent(city)}`;
     }
-    const geoData = await geoResponse.json();
-
-    if (!geoData.length) {
-      return {
-        error: `Could not find location: ${city}`
-      };
+    
+    console.log('Fetching weather data from proxy:', proxyUrl);
+    const response = await fetch(proxyUrl);
+    
+    if (!response.ok) {
+      throw new Error(`Weather API failed with status: ${response.status}`);
     }
-
-    const { lat, lon } = geoData[0];
-
-    // Then get weather data
-    const weatherUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${OPENWEATHER_API_KEY}`;
-    console.log('Fetching weather data from:', weatherUrl);
-    const weatherResponse = await fetch(weatherUrl);
-    if (!weatherResponse.ok) {
-      throw new Error(`Weather API failed with status: ${weatherResponse.status}`);
+    
+    const weatherData = await response.json();
+    
+    if (weatherData.error) {
+      return weatherData;
     }
-    const weatherData = await weatherResponse.json();
 
     return {
-      temperature: weatherData.main.temp,
-      description: weatherData.weather[0].description,
-      humidity: weatherData.main.humidity,
-      windSpeed: weatherData.wind.speed,
-      city: weatherData.name,
-      country: weatherData.sys.country
+      temperature: weatherData.temperature,
+      description: weatherData.description,
+      humidity: weatherData.humidity,
+      windSpeed: weatherData.windSpeed,
+      city: weatherData.city,
+      country: weatherData.country
     };
   } catch (error) {
     console.error('Detailed error:', {

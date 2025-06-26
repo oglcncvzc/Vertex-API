@@ -109,6 +109,7 @@ gcloud run deploy vertex-frontend-service \
 - Service Account kimlik doğrulaması
 - Gerçek zamanlı ses/video proxy
 - Otomatik bağlantı temizleme
+- **Hava durumu API endpoint'i** (`/weather`) - OpenWeatherMap API'si üzerinden hava durumu verileri sağlar
 
 ### Frontend Servisi
 - Modern web arayüzü
@@ -117,6 +118,52 @@ gcloud run deploy vertex-frontend-service \
 - Ekran paylaşımı
 - Gerçek zamanlı iletişim
 - Responsive tasarım
+- **Hava durumu sorgulama** - Şehir bazlı hava durumu bilgileri
+
+## API Endpoints
+
+### Weather Endpoint
+
+Proxy servisi aşağıdaki hava durumu endpoint'ini sağlar:
+
+```
+GET /weather?city={city_name}
+```
+
+**Parametreler:**
+- `city` (required): Hava durumu bilgisi alınacak şehir adı
+
+**Örnek Kullanım:**
+```bash
+curl "https://vertex-proxy-service-638345404110.us-central1.run.app/weather?city=Istanbul"
+```
+
+**Örnek Yanıt:**
+```json
+{
+  "temperature": 18.5,
+  "description": "scattered clouds",
+  "humidity": 65,
+  "windSpeed": 3.2,
+  "city": "Istanbul",
+  "country": "TR"
+}
+```
+
+**Hata Yanıtı:**
+```json
+{
+  "error": "Could not find location: InvalidCity"
+}
+```
+
+### WebSocket Endpoint
+
+```
+WS /ws
+```
+
+Gemini AI ile gerçek zamanlı iletişim için WebSocket bağlantısı.
 
 ## Kullanım
 

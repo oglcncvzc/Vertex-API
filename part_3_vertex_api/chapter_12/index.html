@@ -64,7 +64,7 @@
     import { statusHandler } from './status-handler.js';
 
     console.log('Script started, setting up WebSocket...');
-    const PROXY_URL = `ws://localhost:8080`;  // Note: no port needed in Cloud Run
+    const PROXY_URL = `ws://localhost:8080/ws`;  // Local development için WebSocket endpoint
     const PROJECT_ID = 'voice-asistant-459013';
     const LOCATION = 'us-central1';
 
