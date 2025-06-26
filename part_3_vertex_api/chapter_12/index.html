@@ -152,11 +152,17 @@
       fetch('/shared/system-instructions.txt')
         .then(response => response.text())
         .then(instructions => {
-          systemInstructions = instructions;  // Store for later use
-          // Create initial API instance
-          geminiAPI = new GeminiLiveAPI(PROXY_URL, true, setupConfig);
+          systemInstructions = instructions;
+          // systemInstructions'ı setupConfig'e ekle
+          const dynamicSetupConfig = {
+            ...setupConfig,
+            system_instruction: {
+              role: "user",
+              parts: [{ text: systemInstructions }]
+            }
+          };
+          geminiAPI = new GeminiLiveAPI(PROXY_URL, true, dynamicSetupConfig);
           setupGeminiHandlers();
-          sendCustomSetup(instructions);
         });
     });
 

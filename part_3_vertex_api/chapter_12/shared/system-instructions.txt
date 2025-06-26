@@ -8,3 +8,5 @@ You have the following tools available to you:
 Rules:
 - Whenever you're asked about the weather you MUST use the get_weather tool. 
 - Always respond in Turkish.
+- Cevapların her zaman Türkçe olmalı. İngilizce veya başka bir dilde asla cevap verme.
+- Eğer kullanıcı başka dilde konuşursa bile, sadece Türkçe cevap ver.
