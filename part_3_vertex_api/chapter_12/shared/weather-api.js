@@ -16,8 +16,21 @@
 
 const OPENWEATHER_API_KEY = '07e2ffbd63bb3cfbd8b0f27a4dd93104';
 
+function formatCityName(city) {
+  // Eğer iki kelime ise, ilkini şehir, ikincisini ilçe olarak alıp 'ilçe, şehir' formatına çevir
+  const parts = city.trim().split(/\s+/);
+  if (parts.length === 2) {
+    // Türkçe karakterleri İngilizce'ye çevirmek istersen burada ekleyebilirsin
+    // Ama şimdilik olduğu gibi bırakıyoruz
+    return `${parts[1]}, ${parts[0]}`;
+  }
+  return city;
+}
+
 export async function getWeather(city) {
   try {
+    // Şehir bilgisini otomatik olarak 'ilçe, şehir' formatına çevir
+    const formattedCity = formatCityName(city);
     // Proxy sunucusundaki weather endpoint'ini kullan
     // Cloud Run'da çalışırken proxy sunucusunun URL'sini kullan
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
@@ -25,10 +38,13 @@ export async function getWeather(city) {
     let proxyUrl;
     if (isLocalhost) {
       // Local development için
-      proxyUrl = `http://localhost:8080/weather?city=${encodeURIComponent(city)}`;
+      proxyUrl = `http://localhost:8080/weather?city=${encodeURIComponent(formattedCity)}`;
     } else {
-      // DİKKAT: Burada PROXY SERVİSİNİN tam URL'si olmalı!
-      proxyUrl = `https://vertex-proxy-service-638345404110.us-central1.run.app/weather?city=${encodeURIComponent(city)}`;
+      // Cloud Run'da çalışırken aynı domain'i kullan
+      const protocol = window.location.protocol;
+      const hostname = window.location.hostname;
+      const port = window.location.port;
+      proxyUrl = `https://vertex-proxy-service-638345404110.us-central1.run.app/weather?city=${encodeURIComponent(formattedCity)}`;
     }
     
     console.log('Fetching weather data from proxy:', proxyUrl);
