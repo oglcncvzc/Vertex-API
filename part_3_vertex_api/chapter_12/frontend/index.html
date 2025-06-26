@@ -31,6 +31,9 @@
     <button id="muteButton" onclick="toggleMute()" class="action-button" disabled>
       <span class="material-symbols-outlined">mic</span>
     </button>
+    <button id="stopSpeechButton" onclick="stopSpeech()" class="action-button hidden">
+      <span class="material-symbols-outlined">stop_circle</span>
+    </button>
     <button id="webcamButton" onclick="toggleWebcam()" class="action-button">
       <span class="material-symbols-outlined">videocam</span>
     </button>
@@ -79,6 +82,7 @@
     let mediaHandler;
     let systemInstructions = '';  // Store system instructions for reconnection
     let geminiAPI;  // Will be initialized after loading system instructions
+    let isGeminiPlaying = false; // Yeni: Gemini'nin konuşma durumunu yönetir
 
     const setupConfig = {
       model: `projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/gemini-2.0-flash-live-preview-04-09`,
@@ -253,6 +257,17 @@
           
           console.log('Creating audio streamer...');
           audioStreamer = new AudioStreamer(audioContext);
+          // Yeni: Ses oynatma bittiğinde tetiklenecek olay
+          audioStreamer.onComplete = () => {
+            console.log('Audio playback complete.');
+            if (isGeminiPlaying) { 
+                isGeminiPlaying = false;
+                document.getElementById('stopSpeechButton').classList.add('hidden');
+                if (audioRecorder) {
+                    audioRecorder.flushQueue();
+                }
+            }
+          };
           initialized = true;
           console.log('Audio initialization complete');
           return true;
@@ -422,6 +437,20 @@
       }
     };
 
+    // Yeni: Gemini'nin konuşmasını manuel durdurma fonksiyonu
+    window.stopSpeech = function() {
+      console.log('Kullanıcı konuşma oynatmayı manuel olarak durdurdu.');
+      if (audioStreamer) {
+        audioStreamer.stop(); 
+      }
+      isGeminiPlaying = false;
+      document.getElementById('stopSpeechButton').classList.add('hidden');
+      if (audioRecorder) {
+        audioRecorder.clearQueue(); 
+        audioRecorder.isQueueing = false;
+      }
+    };
+
     // Function to set up Gemini API event handlers
     function setupGeminiHandlers() {
       console.log('Setting up Gemini API handlers');
@@ -438,8 +467,13 @@
 
       geminiAPI.onAudioData = async (audioData) => {
         console.log('Received audio data');
-        if (!audioStreamer?.isPlaying) {
-          console.log('Gemini speaking...');
+        if (!isGeminiPlaying) {
+          console.log('Gemini konuşmaya başladı. Kullanıcı sesi kuyruğa alınıyor.');
+          isGeminiPlaying = true;
+          if (audioRecorder) {
+            audioRecorder.startQueueing();
+          }
+          document.getElementById('stopSpeechButton').classList.remove('hidden');
         }
         await playAudioChunk(audioData);
       };
@@ -528,8 +562,9 @@
       };
 
       geminiAPI.onTurnComplete = () => {
-        console.log('Gemini finished speaking');
-        isInterrupted = false;
+        console.log('Gemini veri göndermeyi tamamladı.');
+        // isInterrupted = false; // This can be removed or kept depending on exact interrupt logic desired
+        // Sesin tamamının oynatılması `audioStreamer.onComplete` tarafından yönetilecek
         audioStreamer?.complete();
       };
 

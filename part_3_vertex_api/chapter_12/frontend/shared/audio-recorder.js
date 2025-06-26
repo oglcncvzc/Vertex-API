@@ -39,6 +39,8 @@ export class AudioRecorder extends EventEmitter3 {
     this.recordingWorklet = undefined;
     this.starting = null;
     this.isMuted = false;
+    this.isQueueing = false;
+    this.audioQueue = [];
   }
 
   async start() {
@@ -75,7 +77,11 @@ export class AudioRecorder extends EventEmitter3 {
 
         if (arrayBuffer) {
           const arrayBufferString = arrayBufferToBase64(arrayBuffer);
-          this.emit("data", arrayBufferString);
+          if (this.isQueueing) {
+            this.audioQueue.push(arrayBufferString);
+          } else {
+            this.emit("data", arrayBufferString);
+          }
         }
       };
       this.source.connect(this.recordingWorklet);
@@ -92,6 +98,8 @@ export class AudioRecorder extends EventEmitter3 {
       this.stream?.getTracks().forEach((track) => track.stop());
       this.stream = undefined;
       this.recordingWorklet = undefined;
+      this.isQueueing = false;
+      this.clearQueue();
     };
     if (this.starting) {
       this.starting.then(handleStop);
@@ -112,5 +120,30 @@ export class AudioRecorder extends EventEmitter3 {
       this.source.connect(this.recordingWorklet);
       this.isMuted = false;
     }
+  }
+
+  startQueueing() {
+    if (!this.isQueueing) {
+      console.log("AudioRecorder: Ses kuyruğa alınmaya başlandı.");
+      this.isQueueing = true;
+    }
+  }
+
+  flushQueue() {
+    if (this.audioQueue.length > 0) {
+      console.log(`AudioRecorder: Kuyruktaki ${this.audioQueue.length} ses paketi gönderiliyor.`);
+      const queuedAudio = [...this.audioQueue];
+      this.audioQueue = [];
+      for (const chunk of queuedAudio) {
+        this.emit('data', chunk);
+      }
+    }
+    console.log("AudioRecorder: Ses kuyruğa alma durduruldu.");
+    this.isQueueing = false;
+  }
+  
+  clearQueue() {
+      this.audioQueue = [];
+      console.log("AudioRecorder: Ses kuyruğu temizlendi.");
   }
 }
