@@ -2,7 +2,7 @@
 // Kullanıcıya özel session yönetimi için yardımcı fonksiyonlar
 
 export class SessionManager {
-  constructor(proxyBaseUrl = 'http://localhost:8080') {
+  constructor(proxyBaseUrl = 'https://vertex-proxy-service-638345404110.us-central1.run.app') {
     this.proxyBaseUrl = proxyBaseUrl;
     this.currentSessionId = null;
     this.currentUserId = null;

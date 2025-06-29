@@ -42,6 +42,9 @@ active_connections = set()
 # Weather API configuration
 OPENWEATHER_API_KEY = '07e2ffbd63bb3cfbd8b0f27a4dd93104'
 
+# Basit bir in-memory session store (örnek amaçlı, prod için uygun değil)
+sessions = {}
+
 
 async def get_access_token():
     """Retrieves the access token for the currently authenticated account."""
@@ -475,6 +478,64 @@ async def weather_handler(request):
         return response
 
 
+async def create_session_handler(request):
+    # CORS headers
+    response = web.Response()
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+    
+    if request.method == 'OPTIONS':
+        response.set_status(200)
+        return response
+    try:
+        data = await request.json()
+        user_id = data.get('user_id')
+        if not user_id:
+            response.set_status(400)
+            response.text = json.dumps({'error': 'user_id is required'})
+            response.content_type = 'application/json'
+            return response
+        session_id = f"session_{user_id}_{len(sessions)+1}"
+        sessions[session_id] = {'user_id': user_id}
+        response.text = json.dumps({'session_id': session_id, 'user_id': user_id})
+        response.content_type = 'application/json'
+        return response
+    except Exception as e:
+        response.set_status(500)
+        response.text = json.dumps({'error': str(e)})
+        response.content_type = 'application/json'
+        return response
+
+
+async def session_info_handler(request):
+    # CORS headers
+    response = web.Response()
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+    
+    if request.method == 'OPTIONS':
+        response.set_status(200)
+        return response
+    try:
+        session_id = request.query.get('session_id')
+        if not session_id or session_id not in sessions:
+            response.set_status(404)
+            response.text = json.dumps({'error': 'Session not found'})
+            response.content_type = 'application/json'
+            return response
+        user_id = sessions[session_id]['user_id']
+        response.text = json.dumps({'valid': True, 'user_id': user_id})
+        response.content_type = 'application/json'
+        return response
+    except Exception as e:
+        response.set_status(500)
+        response.text = json.dumps({'error': str(e)})
+        response.content_type = 'application/json'
+        return response
+
+
 async def main() -> None:
     """
     Starts the WebSocket server and HTTP server.
@@ -492,6 +553,12 @@ async def main() -> None:
     app.router.add_post('/weather', weather_handler)
     app.router.add_options('/weather', weather_handler)
     
+    # Yeni session endpointleri
+    app.router.add_post('/create_session', create_session_handler)
+    app.router.add_options('/create_session', create_session_handler)
+    app.router.add_get('/session_info', session_info_handler)
+    app.router.add_options('/session_info', session_info_handler)
+
     # WebSocket handler'ı ekle
     app.router.add_get('/ws', handle_client)
 
