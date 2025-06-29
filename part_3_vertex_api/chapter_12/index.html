@@ -79,6 +79,12 @@
     let systemInstructions = '';  // Store system instructions for reconnection
     let geminiAPI;  // Will be initialized after loading system instructions
 
+    // Web Speech API ile canlı transkript
+    let recognition;
+    let interimTranscript = '';
+    let finalTranscript = '';
+    let isSpeechRecognitionActive = false;
+
     const setupConfig = {
       model: `projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/gemini-2.0-flash-live-preview-04-09`,
       tools: [{
@@ -153,12 +159,25 @@
         .then(response => response.text())
         .then(instructions => {
           systemInstructions = instructions;
+          
+          // Conversation history'yi al ve system instructions'a ekle
+          const conversationHistory = getPromptHistory();
+          let enhancedInstructions = systemInstructions;
+          
+          if (conversationHistory.length > 0) {
+            enhancedInstructions += '\n\nConversation History (Son 10 konuşma):\n';
+            conversationHistory.forEach((prompt, index) => {
+              enhancedInstructions += `${index + 1}. Kullanıcı: ${prompt}\n`;
+            });
+            enhancedInstructions += '\nBu konuşma geçmişini dikkate alarak yanıt ver.';
+          }
+          
           // systemInstructions'ı setupConfig'e ekle
           const dynamicSetupConfig = {
             ...setupConfig,
             system_instruction: {
               role: "user",
-              parts: [{ text: systemInstructions }]
+              parts: [{ text: enhancedInstructions }]
             }
           };
           geminiAPI = new GeminiLiveAPI(PROXY_URL, true, dynamicSetupConfig);
@@ -167,13 +186,25 @@
     });
 
     function sendCustomSetup(systemInstructions) {
+      // Conversation history'yi al ve system instructions'a ekle
+      const conversationHistory = getPromptHistory();
+      let enhancedInstructions = systemInstructions;
+      
+      if (conversationHistory.length > 0) {
+        enhancedInstructions += '\n\nConversation History (Son 10 konuşma):\n';
+        conversationHistory.forEach((prompt, index) => {
+          enhancedInstructions += `${index + 1}. Kullanıcı: ${prompt}\n`;
+        });
+        enhancedInstructions += '\nBu konuşma geçmişini dikkate alarak yanıt ver.';
+      }
+      
       const setupMessage = {
         setup: {
           model: "models/gemini-2.0-flash-exp",
           system_instruction: {
             role: "user",
             parts: [{
-              text: systemInstructions
+              text: enhancedInstructions
             }]
           },
           tools: [{
@@ -269,6 +300,59 @@
       return true;
     }
 
+    function startSpeechRecognition() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognition = new SpeechRecognition();
+      recognition.lang = 'tr-TR';
+      recognition.interimResults = true;
+      recognition.continuous = true;
+
+      recognition.onresult = (event) => {
+        interimTranscript = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript + ' ';
+          } else {
+            interimTranscript += event.results[i][0].transcript;
+          }
+        }
+        // Ekrana yazdırmak için (isteğe bağlı)
+        document.getElementById('functionInfo').textContent = 'Transkript: ' + (finalTranscript + interimTranscript);
+      };
+
+      recognition.onerror = (event) => {
+        console.error('Speech recognition error:', event.error);
+      };
+
+      recognition.onend = () => {
+        isSpeechRecognitionActive = false;
+        console.log('Speech recognition ended');
+      };
+
+      recognition.start();
+      isSpeechRecognitionActive = true;
+    }
+
+    function stopSpeechRecognition() {
+      if (recognition) recognition.stop();
+      isSpeechRecognitionActive = false;
+    }
+
+    // Prompt geçmişini localStorage'da tut
+    function addPromptToHistory(prompt) {
+      let history = JSON.parse(localStorage.getItem('promptHistory') || '[]');
+      history.push(prompt);
+      if (history.length > 10) history = history.slice(-10); // Son 10 promptu tut
+      localStorage.setItem('promptHistory', JSON.stringify(history));
+    }
+    function getPromptHistory() {
+      return JSON.parse(localStorage.getItem('promptHistory') || '[]');
+    }
+    function clearPromptHistory() {
+      localStorage.removeItem('promptHistory');
+    }
+
+    // Mikrofon başlatıldığında hem ses kaydı hem transkript başlasın
     async function startRecording() {
       try {
         console.log('Starting recording...');
@@ -281,10 +365,16 @@
           audioStreamer.stop();
         }
 
+        // Web Speech API ile transkript başlat
+        finalTranscript = '';
+        interimTranscript = '';
+        startSpeechRecognition();
+
         // Reinitialize Gemini API if WebSocket is closed
         if (!geminiAPI || geminiAPI.ws.readyState !== WebSocket.OPEN) {
           console.log('WebSocket not open, reinitializing...');
-          geminiAPI = new GeminiLiveAPI(endpoint, false);
+          const wsUrl = sessionManager.getWebSocketUrl(PROXY_URL);
+          geminiAPI = new GeminiLiveAPI(wsUrl, false);
           // Reattach event handlers
           setupGeminiHandlers();
           // Send custom setup and wait for completion
@@ -319,6 +409,7 @@
       }
     }
 
+    // Mikrofon durdurulduğunda transkripti prompt olarak Vertex'e gönder
     function stopRecording() {
       if (audioRecorder) {
         console.log('Stopping recording...');
@@ -340,6 +431,25 @@
         geminiAPI.sendEndMessage();
         console.log('Recording stopped');
       }
+      // Web Speech API'yi durdur
+      stopSpeechRecognition();
+
+      // Transkript varsa prompt olarak Vertex'e gönder
+      const userText = finalTranscript.trim();
+      if (userText.length > 0) {
+        // Prompt geçmişini de ekle
+        const promptHistory = getPromptHistory();
+        const fullPrompt = [...promptHistory, userText].join('\n');
+        // Burada promptu Vertex'e gönderebilirsin (örnek fonksiyon):
+        // sendToVertex(fullPrompt);
+        // Prompt geçmişine ekle
+        addPromptToHistory(userText);
+        // Ekrana yazdır
+        document.getElementById('functionInfo').textContent = 'Gönderilen prompt: ' + fullPrompt;
+      }
+      // Transkripti temizle
+      finalTranscript = '';
+      interimTranscript = '';
     }
 
     window.toggleMicrophone = function() {
