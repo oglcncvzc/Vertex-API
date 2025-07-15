@@ -164,17 +164,28 @@
         .then(response => response.text())
         .then(instructions => {
           systemInstructions = instructions;  // Store for later use
-          // systemInstructions'ı setupConfig'e ekle
+
+          // --- SON 10 PROMPTU SYSTEM INSTRUCTIONS'A EKLE ---
+          const conversationHistory = getPromptHistory ? getPromptHistory() : [];
+          let enhancedInstructions = systemInstructions;
+          if (conversationHistory.length > 0) {
+            enhancedInstructions += '\n\nSon 10 Kullanıcı Promptu:\n';
+            conversationHistory.forEach((prompt, index) => {
+              enhancedInstructions += `${index + 1}. Kullanıcı: ${prompt}\n`;
+            });
+            enhancedInstructions += '\nLütfen bu konuşma geçmişini dikkate alarak yanıt ver.';
+          }
+          // --------------------------------------------------
+
           const dynamicSetupConfig = {
             ...setupConfig,
             system_instruction: {
               role: "user",
-              parts: [{ text: systemInstructions }]
+              parts: [{ text: enhancedInstructions }]
             }
           };
           geminiAPI = new GeminiLiveAPI(PROXY_URL, true, dynamicSetupConfig);
           setupGeminiHandlers();
-          // sendCustomSetup(instructions); // Artık gerek yok, çünkü ilk setup'ta gidiyor
         });
     });
 
@@ -385,6 +396,21 @@
       }
     }
 
+    // Prompt geçmişini localStorage'da tut
+    function addPromptToHistory(prompt) {
+      let history = JSON.parse(localStorage.getItem('promptHistory') || '[]');
+      history.push(prompt);
+      if (history.length > 10) history = history.slice(-10); // Son 10 promptu tut
+      localStorage.setItem('promptHistory', JSON.stringify(history));
+    }
+    function getPromptHistory() {
+      return JSON.parse(localStorage.getItem('promptHistory') || '[]');
+    }
+    function clearPromptHistory() {
+      localStorage.removeItem('promptHistory');
+    }
+
+    // Mikrofon durdurulduğunda transkripti prompt olarak Vertex'e gönder
     function stopRecording() {
       if (audioRecorder) {
         console.log('Stopping recording...');
@@ -408,6 +434,12 @@
       }
       // Web Speech API'yi durdur
       stopSpeechRecognition();
+
+      // Transkript varsa prompt olarak geçmişe ekle
+      const userText = finalTranscript.trim();
+      if (userText.length > 0) {
+        addPromptToHistory(userText);
+      }
       // Transkripti temizle
       finalTranscript = '';
       interimTranscript = '';
