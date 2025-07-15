@@ -101,3 +101,40 @@ video:not(.hidden) {
   z-index: 1000;
   width: 90%;
 }
+
+.memory-controls {
+  position: fixed;
+  top: 80px;
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 1000;
+}
+
+.memory-controls button {
+  background: rgba(255, 0, 0, 0.7);
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.3s ease;
+}
+
+.memory-controls button:hover {
+  background: rgba(255, 0, 0, 0.9);
+}
+
+.memory-info {
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 5px 10px;
+  border-radius: 5px;
+  font-size: 12px;
+  text-align: center;
+}

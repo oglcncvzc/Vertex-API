@@ -84,8 +84,14 @@
     let geminiAPI;  // Will be initialized after loading system instructions
     let isGeminiPlaying = false; // Yeni: Gemini'nin konuşma durumunu yönetir
 
+    // Web Speech API ile canlı transkript
+    let recognition;
+    let interimTranscript = '';
+    let finalTranscript = '';
+    let isSpeechRecognitionActive = false;
+
     const setupConfig = {
-      model: `projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/gemini-2.0-flash-live-preview-04-09`,
+      model: `projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/gemini-live-2.5-flash-preview-native-audio`,
       tools: [{
         functionDeclarations: [{
           name: "get_weather",
@@ -135,7 +141,7 @@
         speech_config: {
           voice_config: {
             prebuilt_voice_config: {
-              voice_name: "Despina"
+              voice_name: "Zephyr"
             }
           },
           language_code: "tr-TR"
@@ -253,7 +259,7 @@
       if (!initialized) {
         try {
           console.log('Initializing audio context...');
-          audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+          audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
           console.log('Audio context state:', audioContext.state);
           
           if (audioContext.state === 'suspended') {
@@ -286,6 +292,44 @@
       return true;
     }
 
+    function startSpeechRecognition() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognition = new SpeechRecognition();
+      recognition.lang = 'tr-TR';
+      recognition.interimResults = true;
+      recognition.continuous = true;
+
+      recognition.onresult = (event) => {
+        interimTranscript = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript + ' ';
+          } else {
+            interimTranscript += event.results[i][0].transcript;
+          }
+        }
+        // Ekrana yazdırmak için
+        document.getElementById('functionInfo').textContent = 'Transkript: ' + (finalTranscript + interimTranscript);
+      };
+
+      recognition.onerror = (event) => {
+        console.error('Speech recognition error:', event.error);
+      };
+
+      recognition.onend = () => {
+        isSpeechRecognitionActive = false;
+        console.log('Speech recognition ended');
+      };
+
+      recognition.start();
+      isSpeechRecognitionActive = true;
+    }
+
+    function stopSpeechRecognition() {
+      if (recognition) recognition.stop();
+      isSpeechRecognitionActive = false;
+    }
+
     async function startRecording() {
       try {
         console.log('Starting recording...');
@@ -298,10 +342,15 @@
           audioStreamer.stop();
         }
 
+        // Web Speech API ile transkript başlat
+        finalTranscript = '';
+        interimTranscript = '';
+        startSpeechRecognition();
+
         // Reinitialize Gemini API if WebSocket is closed
         if (!geminiAPI || geminiAPI.ws.readyState !== WebSocket.OPEN) {
           console.log('WebSocket not open, reinitializing...');
-          geminiAPI = new GeminiLiveAPI(endpoint, false);
+          geminiAPI = new GeminiLiveAPI(PROXY_URL, false);
           // Reattach event handlers
           setupGeminiHandlers();
           // Send custom setup and wait for completion
@@ -357,6 +406,11 @@
         geminiAPI.sendEndMessage();
         console.log('Recording stopped');
       }
+      // Web Speech API'yi durdur
+      stopSpeechRecognition();
+      // Transkripti temizle
+      finalTranscript = '';
+      interimTranscript = '';
     }
 
     window.toggleMicrophone = function() {
