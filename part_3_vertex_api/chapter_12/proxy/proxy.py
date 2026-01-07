@@ -39,8 +39,7 @@ DEBUG = True
 # Track active connections
 active_connections = set()
 
-# Weather API configuration
-OPENWEATHER_API_KEY = '07e2ffbd63bb3cfbd8b0f27a4dd93104'
+
 
 # Basit bir in-memory session store (örnek amaçlı, prod için uygun değil)
 sessions = {}
