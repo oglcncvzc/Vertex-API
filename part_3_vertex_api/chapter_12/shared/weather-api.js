@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-const OPENWEATHER_API_KEY = '07e2ffbd63bb3cfbd8b0f27a4dd93104';
+
 
 function formatCityName(city) {
   // Eğer iki kelime ise, ilkini şehir, ikincisini ilçe olarak alıp 'ilçe, şehir' formatına çevir
